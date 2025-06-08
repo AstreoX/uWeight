@@ -1,0 +1,6 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource prefix="/icons">
+    <file alias="tray.png">icons/tray_icon.png</file>
+    <file alias="window.png">icons/tray_icon.png</file>
+</qresource>
+</RCC> 

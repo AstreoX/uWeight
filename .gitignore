@@ -1,0 +1,77 @@
+# Build directories
+build/
+bin/
+lib/
+*.user
+
+# Qt specific
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.moc
+*.o
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+*.qmlc
+*.jsc
+Makefile*
+*build-*
+
+# Qt plugins
+*_plugin_import.cpp
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+Makefile
+*.cmake
+
+# IDE
+.vscode/
+.vs/
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.suo
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+*.bak
+
+# Logs
+*.log
+
+# Compiled binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.app
+*.deb
+*.rpm
+
+# Package files
+*.tar.gz
+*.zip
+*.rar
+*.7z
+
+# Debug
+debug/
+release/ 
