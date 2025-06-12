@@ -1,5 +1,6 @@
 #include "Widgets/SimpleNotesWidget.h"
 #include <QPainter>
+#include <QPaintEvent>
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QDir>
@@ -262,13 +263,43 @@ void SimpleNotesWidget::updateContent() {
     // 可以在这里检查文件变化等，但一般不需要
 }
 
+void SimpleNotesWidget::paintEvent(QPaintEvent* event) {
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    // 直接调用子类的绘制方法，不绘制BaseWidget的默认半透明背景
+    drawContent(painter);
+    
+    // 不调用BaseWidget::paintEvent，避免绘制半透明背景
+    QWidget::paintEvent(event);
+}
+
 void SimpleNotesWidget::drawContent(QPainter& painter) {
-    // 绘制小组件背景
-    painter.fillRect(rect(), m_widgetBackgroundColor);
+    // 绘制米白色纸张背景，不使用半透明效果
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    // 使用米白色背景（类似便签纸的颜色）
+    QColor paperColor = m_widgetBackgroundColor; // 默认是 QColor(255, 255, 220)
+    painter.setBrush(QBrush(paperColor));
     
     // 绘制边框
-    painter.setPen(QPen(QColor(200, 200, 200), 1));
-    painter.drawRect(rect().adjusted(0, 0, -1, -1));
+    QPen borderPen(QColor(200, 200, 200), 1);
+    painter.setPen(borderPen);
+    
+    // 绘制圆角矩形背景
+    QRect contentRect = rect().adjusted(0, 0, -1, -1);
+    painter.drawRoundedRect(contentRect, 5, 5);
+    
+    // 可选：绘制便签纸的横线效果（淡淡的线条）
+    if (height() > 60) { // 只有在足够高的时候才绘制线条
+        painter.setPen(QPen(QColor(220, 220, 220), 1));
+        int lineSpacing = 25; // 行间距
+        int startY = 40; // 从顶部开始的位置
+        
+        for (int y = startY; y < height() - 20; y += lineSpacing) {
+            painter.drawLine(15, y, width() - 15, y);
+        }
+    }
 }
 
 void SimpleNotesWidget::applyConfig() {

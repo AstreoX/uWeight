@@ -3,40 +3,44 @@
 #include <QJsonObject>
 #include <QRect>
 #include <QDebug>
-#include <QApplication>
-#include <QStandardPaths>
-#include <QDir>
 #include <QThread>
-#include <random>
-#include <chrono>
 
-// 随机数生成器辅助函数
-static int getRandomNumber(int min, int max) {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    std::uniform_int_distribution<> dis(min, max);
-    return dis(gen);
-}
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <pdh.h>
+#include <psapi.h>
+#include <iphlpapi.h>
+#endif
 
-// PerformanceMonitor 实现
+// PerformanceMonitor
 PerformanceMonitor::PerformanceMonitor(QObject* parent)
     : QThread(parent)
-    , m_running(false)
+    , m_running(true)
     , m_lastBytesReceived(0)
     , m_lastBytesSent(0)
+#ifdef Q_OS_WIN
+    , m_hQuery(nullptr)
+    , m_hCpuTotal(nullptr)
+    , m_hDiskTime(nullptr)
+    , m_hNetworkTotal(nullptr)
+#endif
 {
     m_lastNetworkCheckTime = QDateTime::currentDateTime();
+#ifdef Q_OS_WIN
+    initializePdh();
+#endif
 }
 
 PerformanceMonitor::~PerformanceMonitor() {
-    stopMonitoring();
+    m_running = false;
+    wait();
+#ifdef Q_OS_WIN
+    uninitializePdh();
+#endif
 }
 
 void PerformanceMonitor::stopMonitoring() {
     m_running = false;
-    if (isRunning()) {
-        wait(3000);
-    }
 }
 
 PerformanceData PerformanceMonitor::getCurrentData() const {
@@ -45,303 +49,310 @@ PerformanceData PerformanceMonitor::getCurrentData() const {
 }
 
 void PerformanceMonitor::run() {
-    m_running = true;
-    
     while (m_running) {
-        collectPerformanceData();
-        
-        {
-            QMutexLocker locker(&m_dataMutex);
-            m_currentData.timestamp = QDateTime::currentDateTime();
+#ifdef Q_OS_WIN
+        if (m_hQuery) {
+            collectPerformanceData();
+        } else {
+            qDebug() << "PDH query not initialized, falling back to basic monitoring";
+            // 使用基本监控方法
+            collectPerformanceData();
         }
-        
-        emit dataUpdated(m_currentData);
-        
-        // 每2秒更新一次
-        msleep(2000);
+#else
+        collectPerformanceData();
+#endif
+        QThread::msleep(1000); // 每秒更新一次
     }
 }
 
 void PerformanceMonitor::collectPerformanceData() {
     PerformanceData data;
-    
-    // 获取CPU使用率
+    data.timestamp = QDateTime::currentDateTime();
+
+#ifdef Q_OS_WIN
+    if (m_hQuery) {
+        // 使用PDH API获取性能数据
+        data.cpuUsage = getCpuUsagePdh();
+        data.diskUsage = getDiskUsagePdh();
+        getNetworkInfoPdh(data.networkUpload, data.networkDownload);
+    } else {
+        // 使用基本方法获取性能数据
+        data.cpuUsage = getCpuUsage();
+        getNetworkInfo(data.networkUpload, data.networkDownload);
+    }
+#else
+    // 非Windows平台使用基本方法
     data.cpuUsage = getCpuUsage();
-    
-    // 获取内存信息
-    getMemoryInfo(data.totalMemory, data.usedMemory);
-    if (data.totalMemory > 0) {
-        data.memoryUsage = (double)data.usedMemory / data.totalMemory * 100.0;
-    }
-    
-    // 获取磁盘信息
-    getDiskInfo(data.totalDisk, data.usedDisk);
-    if (data.totalDisk > 0) {
-        data.diskUsage = (double)data.usedDisk / data.totalDisk * 100.0;
-    }
-    
-    // 获取网络信息
     getNetworkInfo(data.networkUpload, data.networkDownload);
+#endif
+
+    // 获取内存和磁盘信息（这些使用Windows API而不是PDH）
+    getMemoryInfo(data.totalMemory, data.usedMemory);
+    getDiskInfo(data.totalDisk, data.usedDisk);
     
+    data.memoryUsage = data.totalMemory > 0 ? (double)data.usedMemory / data.totalMemory * 100.0 : 0.0;
+
     {
         QMutexLocker locker(&m_dataMutex);
         m_currentData = data;
     }
+
+    emit dataUpdated(data);
 }
 
-double PerformanceMonitor::getCpuUsage() {
-    QProcess process;
-    
-    // 方法1：使用typeperf获取CPU使用率（更稳定）
-    process.start("typeperf", QStringList() << "\"\\Processor(_Total)\\% Processor Time\"" << "-sc" << "1");
-    if (process.waitForFinished(5000)) {
-        QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
-        QStringList lines = output.split('\n', Qt::SkipEmptyParts);
-        
-        for (const QString& line : lines) {
-            if (line.contains("_Total")) {
-                // 查找数字部分
-                QRegularExpression regex("([0-9]+\\.?[0-9]*)");
-                QRegularExpressionMatch match = regex.match(line);
-                if (match.hasMatch()) {
-                    double cpuUsage = match.captured(1).toDouble();
-                    if (cpuUsage >= 0 && cpuUsage <= 100) {
-                        return cpuUsage;
-                    }
-                }
-            }
-        }
+#ifdef Q_OS_WIN
+void PerformanceMonitor::initializePdh() {
+    PDH_STATUS status = PdhOpenQuery(nullptr, 0, &m_hQuery);
+    if (status != ERROR_SUCCESS) {
+        qDebug() << "Failed to open PDH query";
+        m_hQuery = nullptr;
+        return;
     }
-    
-    // 方法2：使用wmic作为备用
-    process.start("wmic", QStringList() << "cpu" << "get" << "loadpercentage" << "/value");
-    if (process.waitForFinished(5000)) {
-        QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
-        QRegularExpression regex("LoadPercentage=([0-9]+)");
-        QRegularExpressionMatch match = regex.match(output);
-        if (match.hasMatch()) {
-            return match.captured(1).toDouble();
-        }
+
+    // 添加CPU计数器
+    status = PdhAddCounter(m_hQuery, L"\\Processor(_Total)\\% Processor Time", 0, &m_hCpuTotal);
+    if (status != ERROR_SUCCESS) {
+        qDebug() << "Failed to add CPU counter";
     }
-    
-    // 方法3：使用PowerShell性能计数器
-    process.start("powershell", QStringList() << "-Command" 
-        << "Get-WmiObject -Class Win32_Processor | Measure-Object -Property LoadPercentage -Average | Select-Object -ExpandProperty Average");
-    if (process.waitForFinished(5000)) {
-        QString output = process.readAllStandardOutput().trimmed();
-        bool ok;
-        double cpuUsage = output.toDouble(&ok);
-        if (ok && cpuUsage >= 0 && cpuUsage <= 100) {
-            return cpuUsage;
-        }
+
+    // 添加磁盘计数器
+    status = PdhAddCounter(m_hQuery, L"\\PhysicalDisk(_Total)\\% Disk Time", 0, &m_hDiskTime);
+    if (status != ERROR_SUCCESS) {
+        qDebug() << "Failed to add disk counter";
     }
-    
-    // 如果所有方法都失败，返回随机值用于演示
-    static bool firstTime = true;
-    if (firstTime) {
-        qDebug() << "Warning: Unable to get real CPU usage, using simulated data";
-        firstTime = false;
+
+    // 添加网络计数器
+    status = PdhAddCounter(m_hQuery, L"\\Network Interface(*)\\Bytes Total/sec", 0, &m_hNetworkTotal);
+    if (status != ERROR_SUCCESS) {
+        qDebug() << "Failed to add network counter";
     }
-    return getRandomNumber(0, 99); // 返回模拟数据
+
+    // 收集第一个样本
+    status = PdhCollectQueryData(m_hQuery);
+    if (status != ERROR_SUCCESS) {
+        qDebug() << "Failed to collect initial PDH data";
+    }
+}
+
+void PerformanceMonitor::uninitializePdh() {
+    if (m_hQuery) {
+        PdhCloseQuery(m_hQuery);
+        m_hQuery = nullptr;
+    }
+}
+
+double PerformanceMonitor::getCpuUsagePdh() {
+    if (!m_hQuery || !m_hCpuTotal) {
+        return getCpuUsage(); // 回退到基本方法
+    }
+
+    PDH_STATUS status = PdhCollectQueryData(m_hQuery);
+    if (status != ERROR_SUCCESS) {
+        return getCpuUsage();
+    }
+
+    PDH_FMT_COUNTERVALUE value;
+    status = PdhGetFormattedCounterValue(m_hCpuTotal, PDH_FMT_DOUBLE, nullptr, &value);
+    if (status != ERROR_SUCCESS) {
+        return getCpuUsage();
+    }
+
+    return value.doubleValue;
+}
+
+double PerformanceMonitor::getDiskUsagePdh() {
+    if (!m_hQuery || !m_hDiskTime) {
+        return 0.0; // 没有基本的回退方法
+    }
+
+    PDH_STATUS status = PdhCollectQueryData(m_hQuery);
+    if (status != ERROR_SUCCESS) {
+        return 0.0;
+    }
+
+    PDH_FMT_COUNTERVALUE value;
+    status = PdhGetFormattedCounterValue(m_hDiskTime, PDH_FMT_DOUBLE, nullptr, &value);
+    if (status != ERROR_SUCCESS) {
+        return 0.0;
+    }
+
+    return value.doubleValue;
+}
+
+void PerformanceMonitor::getNetworkInfoPdh(double& upload, double& download) {
+    if (!m_hQuery || !m_hNetworkTotal) {
+        getNetworkInfo(upload, download); // 回退到基本方法
+        return;
+    }
+
+    PDH_STATUS status = PdhCollectQueryData(m_hQuery);
+    if (status != ERROR_SUCCESS) {
+        getNetworkInfo(upload, download);
+        return;
+    }
+
+    PDH_FMT_COUNTERVALUE value;
+    status = PdhGetFormattedCounterValue(m_hNetworkTotal, PDH_FMT_DOUBLE, nullptr, &value);
+    if (status != ERROR_SUCCESS) {
+        getNetworkInfo(upload, download);
+        return;
+    }
+
+    // PDH返回的是总字节/秒，我们将其分成上传和下载
+    // 这是一个简化的处理方式，实际上可能需要分别监控上传和下载计数器
+    double totalBytes = value.doubleValue;
+    upload = totalBytes / 2.0 / 1024.0;    // 转换为KB/s
+    download = totalBytes / 2.0 / 1024.0;   // 转换为KB/s
 }
 
 void PerformanceMonitor::getMemoryInfo(qint64& total, qint64& used) {
-    total = 0;
-    used = 0;
-    
-    QProcess process;
-    
-    // 方法1：使用PowerShell获取内存信息（更稳定）
-    process.start("powershell", QStringList() << "-Command" 
-        << "Get-WmiObject -Class Win32_OperatingSystem | Select-Object TotalVisibleMemorySize,FreePhysicalMemory | ConvertTo-Json");
-    if (process.waitForFinished(5000)) {
-        QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
-        
-        // 简单的JSON解析
-        QRegularExpression totalRegex("\"TotalVisibleMemorySize\"\\s*:\\s*([0-9]+)");
-        QRegularExpression freeRegex("\"FreePhysicalMemory\"\\s*:\\s*([0-9]+)");
-        
-        QRegularExpressionMatch totalMatch = totalRegex.match(output);
-        QRegularExpressionMatch freeMatch = freeRegex.match(output);
-        
-        if (totalMatch.hasMatch() && freeMatch.hasMatch()) {
-            qint64 totalKB = totalMatch.captured(1).toLongLong();
-            qint64 freeKB = freeMatch.captured(1).toLongLong();
-            total = totalKB / 1024; // 转换为MB
-            used = (totalKB - freeKB) / 1024; // 转换为MB
-            return;
-        }
-    }
-    
-    // 方法2：使用wmic作为备用
-    process.start("wmic", QStringList() << "computersystem" << "get" << "TotalPhysicalMemory" << "/value");
-    if (process.waitForFinished(5000)) {
-        QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
-        QRegularExpression regex("TotalPhysicalMemory=([0-9]+)");
-        QRegularExpressionMatch match = regex.match(output);
-        if (match.hasMatch()) {
-            total = match.captured(1).toLongLong() / (1024 * 1024); // 转换为MB
-        }
-    }
-    
-    // 获取可用内存
-    process.start("wmic", QStringList() << "OS" << "get" << "AvailablePhysicalMemory" << "/value");
-    if (process.waitForFinished(5000)) {
-        QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
-        QRegularExpression regex("AvailablePhysicalMemory=([0-9]+)");
-        QRegularExpressionMatch match = regex.match(output);
-        if (match.hasMatch()) {
-            qint64 available = match.captured(1).toLongLong() / (1024 * 1024); // 转换为MB
-            used = total - available;
-        }
-    }
-    
-    // 如果获取失败，使用模拟数据
-    if (total == 0) {
-        static bool firstTime = true;
-        if (firstTime) {
-            qDebug() << "Warning: Unable to get real memory info, using simulated data";
-            firstTime = false;
-        }
-        total = 8192; // 模拟8GB内存
-        used = 4096 + getRandomNumber(0, 2047); // 模拟已用内存
+    MEMORYSTATUSEX memInfo;
+    memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+    if (GlobalMemoryStatusEx(&memInfo)) {
+        total = memInfo.ullTotalPhys / (1024 * 1024); // MB
+        used = (memInfo.ullTotalPhys - memInfo.ullAvailPhys) / (1024 * 1024); // MB
+    } else {
+        total = 0; 
+        used = 0;
     }
 }
 
 void PerformanceMonitor::getDiskInfo(qint64& total, qint64& used) {
-    total = 0;
-    used = 0;
-    
-    QProcess process;
-    
-    // 方法1：使用PowerShell获取磁盘信息
-    process.start("powershell", QStringList() << "-Command" 
-        << "Get-WmiObject -Class Win32_LogicalDisk | Where-Object {$_.Size -ne $null} | Measure-Object -Property Size,FreeSpace -Sum | Select-Object Property,Sum | ConvertTo-Json");
-    
-    if (process.waitForFinished(5000)) {
-        QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
-        
-        // 解析JSON输出中的Size和FreeSpace
-        qint64 totalSize = 0;
-        qint64 totalFree = 0;
-        
-        QRegularExpression sizeRegex("\"Property\"\\s*:\\s*\"Size\"[^}]*\"Sum\"\\s*:\\s*([0-9]+)");
-        QRegularExpression freeRegex("\"Property\"\\s*:\\s*\"FreeSpace\"[^}]*\"Sum\"\\s*:\\s*([0-9]+)");
-        
-        QRegularExpressionMatch sizeMatch = sizeRegex.match(output);
-        QRegularExpressionMatch freeMatch = freeRegex.match(output);
-        
-        if (sizeMatch.hasMatch() && freeMatch.hasMatch()) {
-            totalSize = sizeMatch.captured(1).toLongLong();
-            totalFree = freeMatch.captured(1).toLongLong();
-        }
-        
-        if (totalSize > 0) {
-            total = totalSize / (1024 * 1024 * 1024); // 转换为GB
-            used = (totalSize - totalFree) / (1024 * 1024 * 1024); // 转换为GB
-            return;
-        }
+    ULARGE_INTEGER freeBytesAvailable, totalBytes, totalFreeBytes;
+    if (GetDiskFreeSpaceExW(L"C:\\", &freeBytesAvailable, &totalBytes, &totalFreeBytes)) {
+        total = totalBytes.QuadPart / (1024 * 1024 * 1024); // GB
+        used = (totalBytes.QuadPart - totalFreeBytes.QuadPart) / (1024 * 1024 * 1024); // GB
+    } else {
+        total = 0;
+        used = 0;
     }
-    
-    // 方法2：使用wmic作为备用
-    process.start("wmic", QStringList() << "logicaldisk" << "where" << "size!=NULL" 
-        << "get" << "size,freespace" << "/value");
-    
-    if (process.waitForFinished(5000)) {
-        QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
-        
-        QRegularExpression sizeRegex("Size=([0-9]+)");
-        QRegularExpression freeRegex("FreeSpace=([0-9]+)");
-        
-        QRegularExpressionMatchIterator sizeIterator = sizeRegex.globalMatch(output);
-        QRegularExpressionMatchIterator freeIterator = freeRegex.globalMatch(output);
-        
-        qint64 totalSize = 0;
-        qint64 totalFree = 0;
-        
-        while (sizeIterator.hasNext()) {
-            QRegularExpressionMatch match = sizeIterator.next();
-            totalSize += match.captured(1).toLongLong();
-        }
-        
-        while (freeIterator.hasNext()) {
-            QRegularExpressionMatch match = freeIterator.next();
-            totalFree += match.captured(1).toLongLong();
-        }
-        
-        if (totalSize > 0) {
-            total = totalSize / (1024 * 1024 * 1024); // 转换为GB
-            used = (totalSize - totalFree) / (1024 * 1024 * 1024); // 转换为GB
-            return;
-        }
+}
+
+double PerformanceMonitor::getCpuUsage() {
+    FILETIME idleTime, kernelTime, userTime;
+    static FILETIME lastIdleTime = {0, 0}, lastKernelTime = {0, 0}, lastUserTime = {0, 0};
+    static double lastCpuUsage = 0.0;
+
+    if (!GetSystemTimes(&idleTime, &kernelTime, &userTime)) {
+        return lastCpuUsage;
     }
-    
-    // 如果获取失败，使用模拟数据
-    static bool firstTime = true;
-    if (firstTime) {
-        qDebug() << "Warning: Unable to get real disk info, using simulated data";
-        firstTime = false;
+
+    ULARGE_INTEGER idle, kernel, user, lastIdle, lastKernel, lastUser;
+    idle.LowPart = idleTime.dwLowDateTime;
+    idle.HighPart = idleTime.dwHighDateTime;
+    kernel.LowPart = kernelTime.dwLowDateTime;
+    kernel.HighPart = kernelTime.dwHighDateTime;
+    user.LowPart = userTime.dwLowDateTime;
+    user.HighPart = userTime.dwHighDateTime;
+
+    lastIdle.LowPart = lastIdleTime.dwLowDateTime;
+    lastIdle.HighPart = lastIdleTime.dwHighDateTime;
+    lastKernel.LowPart = lastKernelTime.dwLowDateTime;
+    lastKernel.HighPart = lastKernelTime.dwHighDateTime;
+    lastUser.LowPart = lastUserTime.dwLowDateTime;
+    lastUser.HighPart = lastUserTime.dwHighDateTime;
+
+    ULONGLONG idleDiff = idle.QuadPart - lastIdle.QuadPart;
+    ULONGLONG kernelDiff = kernel.QuadPart - lastKernel.QuadPart;
+    ULONGLONG userDiff = user.QuadPart - lastUser.QuadPart;
+    ULONGLONG totalDiff = kernelDiff + userDiff;
+
+    if (totalDiff > 0) {
+        lastCpuUsage = ((totalDiff - idleDiff) * 100.0) / totalDiff;
     }
-    total = 512; // 模拟512GB磁盘
-    used = 256 + getRandomNumber(0, 127); // 模拟已用空间
+
+    lastIdleTime = idleTime;
+    lastKernelTime = kernelTime;
+    lastUserTime = userTime;
+
+    return lastCpuUsage;
 }
 
 void PerformanceMonitor::getNetworkInfo(double& upload, double& download) {
-    upload = 0.0;
-    download = 0.0;
+    MIB_IFTABLE* pIfTable = nullptr;
+    DWORD dwSize = 0;
+    static DWORD lastTime = 0;
+    static ULONG64 lastBytesIn = 0;
+    static ULONG64 lastBytesOut = 0;
+    DWORD currentTime = GetTickCount();
     
-    QProcess process;
+    upload = download = 0.0;  // 初始化为0
     
-    // 方法1：使用更简单的typeperf命令
-    process.start("typeperf", QStringList() << "\"\\Network Interface(*)\\Bytes Total/sec\"" << "-sc" << "1");
-    if (process.waitForFinished(5000)) {
-        QString output = QString::fromLocal8Bit(process.readAllStandardOutput());
-        
-        // 解析网络字节总数
-        qint64 totalBytes = 0;
-        QRegularExpression regex("([0-9]+\\.?[0-9]*)");
-        QRegularExpressionMatchIterator iterator = regex.globalMatch(output);
-        
-        while (iterator.hasNext()) {
-            QRegularExpressionMatch match = iterator.next();
-            double value = match.captured(1).toDouble();
-            if (value > 1000) { // 过滤掉小数值
-                totalBytes += static_cast<qint64>(value);
+    // 获取所需缓冲区大小
+    if (GetIfTable(nullptr, &dwSize, TRUE) == ERROR_INSUFFICIENT_BUFFER) {
+        pIfTable = (MIB_IFTABLE*)malloc(dwSize);
+        if (pIfTable) {
+            if (GetIfTable(pIfTable, &dwSize, TRUE) == NO_ERROR) {
+                ULONG64 totalBytesIn = 0;
+                ULONG64 totalBytesOut = 0;
+                
+                // 累加所有活动的网络接口的流量
+                for (DWORD i = 0; i < pIfTable->dwNumEntries; i++) {
+                    // 检查接口是否为以太网或无线网络接口
+                    if (pIfTable->table[i].dwType == IF_TYPE_ETHERNET_CSMACD ||
+                        pIfTable->table[i].dwType == IF_TYPE_IEEE80211) {
+                        
+                        // 检查接口是否处于活动状态且有流量
+                        if ((pIfTable->table[i].dwOperStatus == IF_OPER_STATUS_OPERATIONAL) &&
+                            (pIfTable->table[i].dwInOctets > 0 || pIfTable->table[i].dwOutOctets > 0)) {
+                            
+                            totalBytesIn += pIfTable->table[i].dwInOctets;
+                            totalBytesOut += pIfTable->table[i].dwOutOctets;
+                            
+                            qDebug() << "Interface" << i 
+                                    << "Type:" << pIfTable->table[i].dwType
+                                    << "Status:" << pIfTable->table[i].dwOperStatus
+                                    << "In:" << pIfTable->table[i].dwInOctets
+                                    << "Out:" << pIfTable->table[i].dwOutOctets;
+                        }
+                    }
+                }
+                
+                // 计算速率（KB/s）
+                if (lastTime > 0) {
+                    DWORD timeDiff = currentTime - lastTime;
+                    if (timeDiff > 0) {
+                        // 处理计数器溢出的情况
+                        if (totalBytesIn >= lastBytesIn) {
+                            download = ((totalBytesIn - lastBytesIn) * 1000.0) / (timeDiff * 1024.0);
+                        }
+                        if (totalBytesOut >= lastBytesOut) {
+                            upload = ((totalBytesOut - lastBytesOut) * 1000.0) / (timeDiff * 1024.0);
+                        }
+                        
+                        qDebug() << "Network Speed -"
+                                << "Upload:" << upload << "KB/s,"
+                                << "Download:" << download << "KB/s,"
+                                << "Time diff:" << timeDiff << "ms,"
+                                << "Total In:" << totalBytesIn
+                                << "Last In:" << lastBytesIn
+                                << "Total Out:" << totalBytesOut
+                                << "Last Out:" << lastBytesOut;
+                    }
+                }
+                
+                lastBytesIn = totalBytesIn;
+                lastBytesOut = totalBytesOut;
+            } else {
+                qDebug() << "Failed to get network interface table";
             }
+            free(pIfTable);
+        } else {
+            qDebug() << "Failed to allocate memory for network interface table";
         }
-        
-        QDateTime currentTime = QDateTime::currentDateTime();
-        qint64 timeDiff = m_lastNetworkCheckTime.msecsTo(currentTime);
-        
-        if (timeDiff > 0 && m_lastBytesReceived > 0) {
-            double speed = (totalBytes - m_lastBytesReceived) * 1000.0 / timeDiff / 1024.0; // KB/s
-            download = speed * 0.6; // 假设下载占60%
-            upload = speed * 0.4;   // 假设上传占40%
-        }
-        
-        m_lastBytesReceived = totalBytes;
-        m_lastNetworkCheckTime = currentTime;
-        return;
+    } else {
+        qDebug() << "Failed to get network interface table size";
     }
     
-    // 方法2：使用wmic作为备用（简化版本）
-    static int callCount = 0;
-    callCount++;
+    lastTime = currentTime;
     
-    // 模拟网络活动
-    if (callCount > 2) {
-        download = 50.0 + getRandomNumber(0, 199); // 50-250 KB/s
-        upload = 20.0 + getRandomNumber(0, 99);   // 20-120 KB/s
-        
-        static bool firstTime = true;
-        if (firstTime) {
-            qDebug() << "Warning: Unable to get real network info, using simulated data";
-            firstTime = false;
-        }
-    }
+    // 确保返回的值是有效的
+    if (upload < 0) upload = 0;
+    if (download < 0) download = 0;
 }
+#endif
 
-// SystemPerformanceWidget 实现
+// SystemPerformanceWidget
 SystemPerformanceWidget::SystemPerformanceWidget(const WidgetConfig& config, QWidget* parent)
     : BaseWidget(config, parent)
     , m_monitor(nullptr)
@@ -478,12 +489,18 @@ void SystemPerformanceWidget::updateContent() {
 void SystemPerformanceWidget::drawContent(QPainter& painter) {
     painter.setRenderHint(QPainter::Antialiasing);
     
-    // 设置背景透明度
-    QColor bgColor = m_backgroundColor;
-    bgColor.setAlphaF(m_backgroundOpacity);
+    // 应用与系统信息小组件完全相同的样式
+    QString style = QString(
+        "QWidget { "
+        "    border: 1px solid %1; "
+        "    border-radius: 5px; "
+        "    font-weight: bold; "
+        "} "
+    ).arg(palette().mid().color().name());
     
-    // 绘制背景
-    painter.fillRect(rect(), bgColor);
+    setStyleSheet(style);
+    
+    // 不绘制自定义背景，使用BaseWidget的默认背景（QColor(0, 0, 0, 50)）
     
     // 绘制边框
     painter.setPen(QPen(m_borderColor, 1));

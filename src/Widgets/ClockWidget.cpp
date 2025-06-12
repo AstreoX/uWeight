@@ -28,6 +28,9 @@
 #include <QPainter>
 #include <QJsonObject>
 #include <QRect>
+#include <QApplication>
+#include <QFileInfo>
+#include <QDebug>
 
 /**
  * @brief ClockWidget构造函数
@@ -157,13 +160,22 @@ void ClockWidget::loadBackgroundImage() {
         return;
     }
     
-    QPixmap image(m_backgroundImagePath);
+    QString imagePath = m_backgroundImagePath;
+    
+    // 如果是相对路径，转换为绝对路径
+    if (!QFileInfo(imagePath).isAbsolute()) {
+        imagePath = QApplication::applicationDirPath() + "/" + imagePath;
+    }
+    
+    QPixmap image(imagePath);
     if (!image.isNull()) {
         m_backgroundImage = image;
         m_useBackgroundImage = true;
+        qDebug() << "ClockWidget: 成功加载背景图片:" << imagePath;
     } else {
         m_backgroundImage = QPixmap();
         m_useBackgroundImage = false;
+        qDebug() << "ClockWidget: 加载背景图片失败:" << imagePath;
     }
 }
 
@@ -241,12 +253,14 @@ void ClockWidget::updateContent() {
 void ClockWidget::drawContent(QPainter& painter) {
     painter.setRenderHint(QPainter::Antialiasing);
     
-    // 绘制背景
+    // 绘制背景（主题图片或纯色背景）
     drawBackground(painter);
     
-    // 绘制边框
-    painter.setPen(QPen(QColor(255, 255, 255, 50), 1));
-    painter.drawRoundedRect(rect().adjusted(1, 1, -1, -1), 5, 5);
+    // 绘制边框（仅在没有背景图片时显示）
+    if (!m_useBackgroundImage || m_backgroundImage.isNull()) {
+        painter.setPen(QPen(QColor(255, 255, 255, 50), 1));
+        painter.drawRoundedRect(rect().adjusted(1, 1, -1, -1), 5, 5);
+    }
     
     // 计算文本区域
     QRect timeRect = rect();

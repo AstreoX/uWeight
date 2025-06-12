@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(DesktopWidgetSystem VERSION 1.0.0)
+project(uWidget VERSION 1.1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,7 +17,7 @@ if(NOT DEFINED CMAKE_PREFIX_PATH OR CMAKE_PREFIX_PATH STREQUAL "")
 endif()
 
 # 查找Qt6
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Network)
 
 # 查找其他依赖
 find_package(Threads REQUIRED)
@@ -42,7 +42,6 @@ set(SOURCES
     src/BackendManagement/ThemeSettingsDialog.cpp
     src/BackendManagement/AIRankingConfigDialog.cpp
     src/BackendManagement/WeatherConfigDialog.cpp
-    src/BackendManagement/NotesConfigDialog.cpp
     src/Utils/SystemTray.cpp
     src/Utils/Logger.cpp
     src/Utils/ThemeManager.cpp
@@ -52,10 +51,16 @@ set(SOURCES
     src/Widgets/WeatherWidget.cpp
     src/Widgets/AIRankingWidget.cpp
     src/Widgets/SystemPerformanceWidget.cpp
-    src/Widgets/NotesWidget.cpp
     src/Widgets/SimpleNotesWidget.cpp
     src/Widgets/CalendarWidget.cpp
+    src/Widgets/SystemInfoWidget.cpp
+    src/Utils/SystemInfoCollector.cpp
 )
+
+# Windows特定资源文件
+if(WIN32)
+    list(APPEND SOURCES app_icon.rc)
+endif()
 
 # 头文件
 set(HEADERS
@@ -70,7 +75,6 @@ set(HEADERS
     include/BackendManagement/ThemeSettingsDialog.h
     include/BackendManagement/AIRankingConfigDialog.h
     include/BackendManagement/WeatherConfigDialog.h
-    include/BackendManagement/NotesConfigDialog.h
     include/Utils/SystemTray.h
     include/Utils/ThemeManager.h
     include/Utils/ThemeResourceManager.h
@@ -79,9 +83,10 @@ set(HEADERS
     include/Widgets/WeatherWidget.h
     include/Widgets/AIRankingWidget.h
     include/Widgets/SystemPerformanceWidget.h
-    include/Widgets/NotesWidget.h
     include/Widgets/SimpleNotesWidget.h
     include/Widgets/CalendarWidget.h
+    include/Widgets/SystemInfoWidget.h
+    include/Utils/SystemInfoCollector.h
 )
 
 # Qt MOC处理
@@ -94,18 +99,19 @@ set(RESOURCES
 qt6_add_resources(RESOURCE_FILES ${RESOURCES})
 
 # 创建可执行文件
-add_executable(DesktopWidgetSystem ${SOURCES} ${MOC_SOURCES} ${RESOURCE_FILES})
+add_executable(uWidget ${SOURCES} ${MOC_SOURCES} ${RESOURCE_FILES})
 
 # 设置Qt6自动MOC、UIC、RCC
-set_target_properties(DesktopWidgetSystem PROPERTIES
+set_target_properties(uWidget PROPERTIES
     AUTOMOC ON
     AUTOUIC ON
     AUTORCC ON
 )
 
 # 链接库
-target_link_libraries(DesktopWidgetSystem
+target_link_libraries(uWidget PRIVATE
     Qt6::Core
+    Qt6::Gui
     Qt6::Widgets
     Qt6::Network
     Threads::Threads
@@ -113,28 +119,48 @@ target_link_libraries(DesktopWidgetSystem
 
 # Windows特定设置
 if(WIN32)
-    target_link_libraries(DesktopWidgetSystem
+    target_link_libraries(uWidget PRIVATE
         user32
         shell32
         ole32
         dwmapi
+        pdh
+        iphlpapi
+        psapi
     )
-    set_target_properties(DesktopWidgetSystem PROPERTIES
+    
+    # 添加Windows特定的编译定义
+    target_compile_definitions(uWidget PRIVATE
+        WIN32
+        _WINDOWS
+        UNICODE
+        _UNICODE
+        WINVER=0x0601
+        _WIN32_WINNT=0x0601
+    )
+    
+    set_target_properties(uWidget PROPERTIES
         WIN32_EXECUTABLE TRUE
     )
     
     # 修复MinGW链接问题
     if(MINGW)
-        target_link_libraries(DesktopWidgetSystem
+        target_link_libraries(uWidget PRIVATE
             -static-libgcc
             -static-libstdc++
+        )
+        
+        # MinGW特定的编译选项
+        target_compile_options(uWidget PRIVATE
+            -Wno-unknown-pragmas  # 禁用未知pragma警告
+            -Wno-parentheses     # 禁用括号警告
         )
     endif()
 endif()
 
 # 编译器特定设置
 if(MSVC)
-    target_compile_options(DesktopWidgetSystem PRIVATE /W4)
+    target_compile_options(uWidget PRIVATE /W4)
 else()
-    target_compile_options(DesktopWidgetSystem PRIVATE -Wall -Wextra -pedantic)
+    target_compile_options(uWidget PRIVATE -Wall -Wextra -pedantic)
 endif() 

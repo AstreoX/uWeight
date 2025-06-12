@@ -39,6 +39,7 @@ private slots:
     void onApplyTheme();
     void onResetToDefault();
     void onCustomImageSelected();
+    void onOkClicked();
 
 private:
     void setupUI();

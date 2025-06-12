@@ -81,7 +81,7 @@ ThemeManager::ThemeManager(QObject* parent) : QObject(parent) {
  *     "themeId": {
  *       "name": "主题名称",
  *       "description": "主题描述", 
- *       "settings": { /* 主题配置 */ }
+ *       "settings": { ... }
  *     }
  *   }
  * }

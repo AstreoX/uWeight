@@ -12,6 +12,11 @@
 #include <QProcess>
 #include <QRegularExpression>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <pdh.h>
+#endif
+
 // 性能数据结构
 struct PerformanceData {
     double cpuUsage = 0.0;          // CPU使用率 (0-100)
@@ -50,6 +55,13 @@ private:
     void getDiskInfo(qint64& total, qint64& used);
     void getNetworkInfo(double& upload, double& download);
 
+    // PDH相关函数
+    void initializePdh();
+    void uninitializePdh();
+    double getCpuUsagePdh();
+    double getDiskUsagePdh();
+    void getNetworkInfoPdh(double& upload, double& download);
+
 private:
     bool m_running;
     PerformanceData m_currentData;
@@ -59,6 +71,14 @@ private:
     qint64 m_lastBytesReceived;
     qint64 m_lastBytesSent;
     QDateTime m_lastNetworkCheckTime;
+
+    // PDH相关成员变量
+#ifdef Q_OS_WIN
+    PDH_HQUERY m_hQuery;
+    PDH_HCOUNTER m_hCpuTotal;
+    PDH_HCOUNTER m_hDiskTime;
+    PDH_HCOUNTER m_hNetworkTotal;
+#endif
 };
 
 class SystemPerformanceWidget : public BaseWidget {

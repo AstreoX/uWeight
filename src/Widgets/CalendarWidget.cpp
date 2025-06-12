@@ -26,7 +26,7 @@ CalendarWidget::CalendarWidget(const WidgetConfig& config, QWidget* parent)
     , m_todayColor(QColor(0, 120, 215))
     , m_selectedColor(QColor(255, 140, 0))
     , m_otherMonthColor(QColor(100, 100, 100))
-    , m_gridColor(QColor(60, 60, 60))
+    , m_gridColor(QColor(180, 180, 180, 120))
     , m_backgroundColor(QColor(30, 30, 30, 200))
     , m_backgroundScaleMode(BackgroundScaleMode::Stretch)
     , m_backgroundOpacity(1.0)
@@ -303,8 +303,18 @@ void CalendarWidget::updateContent() {
 void CalendarWidget::drawContent(QPainter& painter) {
     painter.setRenderHint(QPainter::Antialiasing);
     
-    // 绘制背景
-    drawBackground(painter);
+    // 应用与系统信息小组件完全相同的样式
+    QString style = QString(
+        "QWidget { "
+        "    border: 1px solid %1; "
+        "    border-radius: 5px; "
+        "    font-weight: bold; "
+        "} "
+    ).arg(palette().mid().color().name());
+    
+    setStyleSheet(style);
+    
+    // 使用BaseWidget的默认背景（QColor(0, 0, 0, 50)），绘制日历内容
     
     // 绘制边框
     if (m_style != CalendarStyle::Minimal) {
@@ -396,13 +406,20 @@ void CalendarWidget::drawCalendarGrid(QPainter& painter) {
     
     painter.setPen(QPen(m_gridColor, 1));
     
-    // 绘制垂直线
+    // 计算实际的日历区域大小（精确到网格）
+    int actualHeight = weeks * cellSize.height();
+    
+    // 绘制垂直线（使用完整宽度，避免右侧留白）
     for (int i = 0; i <= 7; ++i) {
         int x = gridRect.left() + i * cellSize.width();
-        painter.drawLine(x, gridRect.top(), x, gridRect.bottom());
+        // 最后一条垂直线使用gridRect的右边界，确保无留白
+        if (i == 7) {
+            x = gridRect.right();
+        }
+        painter.drawLine(x, gridRect.top(), x, gridRect.top() + actualHeight);
     }
     
-    // 绘制水平线
+    // 绘制水平线（使用完整宽度）
     for (int i = 0; i <= weeks; ++i) {
         int y = gridRect.top() + i * cellSize.height();
         painter.drawLine(gridRect.left(), y, gridRect.right(), y);
@@ -514,15 +531,28 @@ QRect CalendarWidget::getDateRect(int row, int col) const {
     QRect gridRect = getCalendarGridRect();
     QSize cellSize = getCellSize();
     
-    return QRect(gridRect.left() + col * cellSize.width(),
-                gridRect.top() + row * cellSize.height(),
-                cellSize.width(), cellSize.height());
+    int x = gridRect.left() + col * cellSize.width();
+    int y = gridRect.top() + row * cellSize.height();
+    int width = cellSize.width();
+    int height = cellSize.height();
+    
+    // 对于最后一列，使用剩余的完整宽度，避免留白
+    if (col == 6) {
+        width = gridRect.right() - x;
+    }
+    
+    return QRect(x, y, width, height);
 }
 
 QSize CalendarWidget::getCellSize() const {
     QRect gridRect = getCalendarGridRect();
     int weeks = getWeeksInMonth();
-    return QSize(gridRect.width() / 7, gridRect.height() / weeks);
+    
+    // 计算精确的单元格尺寸，确保没有留白
+    int cellWidth = gridRect.width() / 7;
+    int cellHeight = gridRect.height() / weeks;
+    
+    return QSize(cellWidth, cellHeight);
 }
 
 QDate CalendarWidget::getFirstDateOfMonth() const {

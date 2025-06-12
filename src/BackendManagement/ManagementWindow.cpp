@@ -3,7 +3,6 @@
 #include "BackendManagement/ConfigWindow.h"
 #include "BackendManagement/AIRankingConfigDialog.h"
 #include "BackendManagement/WeatherConfigDialog.h"
-#include "BackendManagement/NotesConfigDialog.h"
 #include "Framework/WidgetManager.h"
 #include <QApplication>
 #include <QCloseEvent>
@@ -17,6 +16,8 @@
 #include <QScreen>
 #include <QJsonDocument>
 #include <QJsonParseError>
+#include <QScrollArea>
+#include <QFrame>
 #include <iostream>
 
 ManagementWindow::ManagementWindow(WidgetManager* widgetManager, QWidget* parent)
@@ -25,7 +26,8 @@ ManagementWindow::ManagementWindow(WidgetManager* widgetManager, QWidget* parent
 {
     setWindowTitle("桌面小组件管理");
     setWindowIcon(QIcon(":/icons/window.png"));
-    setMinimumSize(800, 600);
+    setMinimumSize(1000, 700);  // 增加最小尺寸以确保设置面板有足够空间
+    resize(1200, 800);  // 设置默认启动尺寸
     setupUI();
     clearSettingsPanel(); // 初始化时清空设置面板
     
@@ -105,7 +107,6 @@ void ManagementWindow::refreshWidgetList() {
             case WidgetType::Weather: typeText = "天气"; break;
             case WidgetType::SystemInfo: typeText = "系统信息"; break;
             case WidgetType::Calendar: typeText = "日历"; break;
-            case WidgetType::Notes: typeText = "便签"; break;
             case WidgetType::SimpleNotes: typeText = "极简便签"; break;
             case WidgetType::AIRanking: typeText = "AI排行榜"; break;
             case WidgetType::SystemPerformance: typeText = "系统性能监测"; break;
@@ -151,11 +152,22 @@ void ManagementWindow::setupUI() {
     setupSettingsPanel();
     setupStatusBar();
     
+    // 设置各部分的拉伸比例
+    m_mainLayout->setStretchFactor(m_listGroupBox, 2);     // 组件列表占2份
+    // 按钮区域已设为固定宽度，无需设置拉伸因子
+    m_mainLayout->setStretchFactor(m_settingsGroupBox, 3); // 设置面板占3份，给更多空间
+    
+    // 设置布局间距
+    m_mainLayout->setSpacing(10);
+    m_mainLayout->setContentsMargins(10, 10, 10, 10);
+    
     updateSliderRanges();
 }
 
 void ManagementWindow::setupWidgetList() {
     m_listGroupBox = new QGroupBox("Widget列表");
+    m_listGroupBox->setMinimumWidth(300);  // 设置最小宽度
+    m_listGroupBox->setMaximumWidth(450);  // 设置最大宽度，防止过度扩展
     m_listLayout = new QVBoxLayout(m_listGroupBox);
     
     // 添加搜索框
@@ -197,7 +209,10 @@ void ManagementWindow::setupWidgetList() {
 }
 
 void ManagementWindow::setupControlButtons() {
-    m_buttonLayout = new QVBoxLayout;
+    // 创建一个widget来包装按钮布局，以便设置固定宽度
+    QWidget* buttonWidget = new QWidget;
+    buttonWidget->setFixedWidth(120);  // 设置固定宽度
+    m_buttonLayout = new QVBoxLayout(buttonWidget);
     
     m_createButton = new QPushButton("创建");
     m_removeButton = new QPushButton("移除");
@@ -245,7 +260,7 @@ void ManagementWindow::setupControlButtons() {
         m_statusLabel->setText("组件列表已刷新");
     });
     
-    m_mainLayout->addLayout(m_buttonLayout);
+    m_mainLayout->addWidget(buttonWidget);
     
     connect(m_createButton, &QPushButton::clicked, this, &ManagementWindow::onCreateWidget);
     connect(m_removeButton, &QPushButton::clicked, this, &ManagementWindow::onRemoveWidget);
@@ -256,7 +271,27 @@ void ManagementWindow::setupControlButtons() {
 
 void ManagementWindow::setupSettingsPanel() {
     m_settingsGroupBox = new QGroupBox("组件设置");
-    m_settingsLayout = new QVBoxLayout(m_settingsGroupBox);
+    
+    // 创建滚动区域来容纳设置内容
+    QScrollArea* scrollArea = new QScrollArea;
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    
+    // 创建滚动区域内的内容widget
+    QWidget* scrollWidget = new QWidget;
+    m_settingsLayout = new QVBoxLayout(scrollWidget);
+    
+    // 设置滚动区域的内容
+    scrollArea->setWidget(scrollWidget);
+    
+    // 将滚动区域添加到设置组框中
+    QVBoxLayout* groupLayout = new QVBoxLayout(m_settingsGroupBox);
+    groupLayout->addWidget(scrollArea);
+    
+    // 设置组框的最小尺寸
+    m_settingsGroupBox->setMinimumWidth(350);  // 确保设置面板有足够宽度
     
     // 基本信息区域
     QGroupBox* basicGroup = new QGroupBox("基本信息");
@@ -270,7 +305,6 @@ void ManagementWindow::setupSettingsPanel() {
     m_typeComboBox->addItem("天气", static_cast<int>(WidgetType::Weather));
     m_typeComboBox->addItem("系统信息", static_cast<int>(WidgetType::SystemInfo));
     m_typeComboBox->addItem("日历", static_cast<int>(WidgetType::Calendar));
-    m_typeComboBox->addItem("便签", static_cast<int>(WidgetType::Notes));
     m_typeComboBox->addItem("极简便签", static_cast<int>(WidgetType::SimpleNotes));
     m_typeComboBox->addItem("AI排行榜", static_cast<int>(WidgetType::AIRanking));
     m_typeComboBox->addItem("系统性能监测", static_cast<int>(WidgetType::SystemPerformance));
@@ -411,6 +445,16 @@ void ManagementWindow::setupSettingsPanel() {
     m_settingsLayout->addWidget(customGroup);
     m_settingsLayout->addLayout(buttonLayout);
     m_settingsLayout->addStretch();
+    
+    // 设置各组的大小策略
+    basicGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    geometryGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    displayGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    customGroup->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    
+    // 设置布局边距和间距
+    m_settingsLayout->setContentsMargins(5, 5, 5, 5);
+    m_settingsLayout->setSpacing(8);
     
     m_mainLayout->addWidget(m_settingsGroupBox);
     
@@ -704,6 +748,7 @@ void ManagementWindow::setupSliderConnections() {
 
 void ManagementWindow::closeEvent(QCloseEvent* event) {
     hide();
+    emit windowHiddenToTray();  // 发出隐藏到托盘的信号
     event->ignore(); // 不真正关闭，只是隐藏
 }
 
@@ -823,11 +868,6 @@ void ManagementWindow::onConfigureWidget() {
             configDialog = new WeatherConfigDialog(config, this);
             break;
         }
-        case WidgetType::Notes:
-        case WidgetType::SimpleNotes: {
-            configDialog = new NotesConfigDialog(config, this);
-            break;
-        }
         case WidgetType::AIRanking: {
             configDialog = new AIRankingConfigDialog(config, this);
             break;
@@ -835,6 +875,7 @@ void ManagementWindow::onConfigureWidget() {
         case WidgetType::Clock:
         case WidgetType::SystemInfo:
         case WidgetType::Calendar:
+        case WidgetType::SimpleNotes:
         case WidgetType::SystemPerformance:
         case WidgetType::Custom:
         default: {
@@ -849,8 +890,6 @@ void ManagementWindow::onConfigureWidget() {
         
         if (auto weatherDialog = qobject_cast<WeatherConfigDialog*>(configDialog)) {
             updatedConfig = weatherDialog->getUpdatedConfig();
-        } else if (auto notesDialog = qobject_cast<NotesConfigDialog*>(configDialog)) {
-            updatedConfig = notesDialog->getUpdatedConfig();
         } else if (auto aiDialog = qobject_cast<AIRankingConfigDialog*>(configDialog)) {
             updatedConfig = aiDialog->getUpdatedConfig();
         } else if (auto generalDialog = qobject_cast<ConfigWindow*>(configDialog)) {

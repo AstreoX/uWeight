@@ -18,6 +18,9 @@ ui_*.h
 *.jsc
 Makefile*
 *build-*
+*.qm
+.qmake.cache
+.qmake.stash
 
 # Qt plugins
 *_plugin_import.cpp
@@ -74,4 +77,48 @@ $RECYCLE.BIN/
 
 # Debug
 debug/
-release/ 
+release/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# IDE specific
+*.swp
+*.swo
+*~
+
+# Project specific
+*.bak
+
+# C++ objects and libs
+*.slo
+*.lo
+*.a
+*.la
+*.lai
+*.so
+*.so.*
+*.dll
+*.dylib
+
+# VS/VS Code specific
+*.user
+*.userosscache
+*.sln.docstates
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.opensdf
+*.sdf
+*.cachefile
+*.VC.db
+*.VC.VC.opendb 

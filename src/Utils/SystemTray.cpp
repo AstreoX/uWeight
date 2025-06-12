@@ -39,6 +39,29 @@ void SystemTray::showMessage(const QString& title, const QString& message,
     }
 }
 
+void SystemTray::showStartupNotification() {
+    if (m_trayIcon) {
+        m_trayIcon->showMessage("uWidget桌面小组件系统", 
+                               "🚀 应用程序已成功启动！\n"
+                               "• 双击托盘图标打开管理界面\n"
+                               "• 右键托盘图标查看更多选项\n"
+                               "• Made by uTools Studio", 
+                               QSystemTrayIcon::Information, 
+                               5000);  // 显示5秒
+    }
+}
+
+void SystemTray::showManagementWindowHiddenNotification() {
+    if (m_trayIcon) {
+        m_trayIcon->showMessage("管理窗口已隐藏", 
+                               "📝 管理窗口已最小化到系统托盘\n"
+                               "• 双击托盘图标可重新打开管理界面\n"
+                               "• 您的小组件将继续在后台运行", 
+                               QSystemTrayIcon::Information, 
+                               3000);  // 显示3秒
+    }
+}
+
 void SystemTray::createTrayIcon() {
     m_trayIcon = new QSystemTrayIcon(this);
     
@@ -111,22 +134,6 @@ void SystemTray::onShowManagement() {
 
 void SystemTray::onCreateClockWidget() {
     emit createWidgetRequested(WidgetType::Clock);
-}
-
-void SystemTray::onCreateWeatherWidget() {
-    emit createWidgetRequested(WidgetType::Weather);
-}
-
-void SystemTray::onCreateSystemInfoWidget() {
-    emit createWidgetRequested(WidgetType::SystemInfo);
-}
-
-void SystemTray::onCreateCalendarWidget() {
-    emit createWidgetRequested(WidgetType::Calendar);
-}
-
-void SystemTray::onCreateNotesWidget() {
-    emit createWidgetRequested(WidgetType::Notes);
 }
 
 void SystemTray::onCreateAIRankingWidget() {

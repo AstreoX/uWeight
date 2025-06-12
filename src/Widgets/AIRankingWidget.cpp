@@ -501,8 +501,18 @@ void AIRankingWidget::updateContent() {
 void AIRankingWidget::drawContent(QPainter& painter) {
     painter.setRenderHint(QPainter::Antialiasing);
     
-    // 绘制背景
-    painter.fillRect(rect(), m_backgroundColor);
+    // 应用与系统信息小组件完全相同的样式
+    QString style = QString(
+        "QWidget { "
+        "    border: 1px solid %1; "
+        "    border-radius: 5px; "
+        "    font-weight: bold; "
+        "} "
+    ).arg(palette().mid().color().name());
+    
+    setStyleSheet(style);
+    
+    // 不绘制自定义背景，使用BaseWidget的默认背景（QColor(0, 0, 0, 50)）
     
     // 绘制边框
     painter.setPen(QPen(m_borderColor, 1));

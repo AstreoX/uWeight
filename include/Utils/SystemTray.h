@@ -20,6 +20,12 @@ public:
 
     void showMessage(const QString& title, const QString& message, 
                     QSystemTrayIcon::MessageIcon icon = QSystemTrayIcon::Information);
+    
+    // 新增：显示启动完成通知
+    void showStartupNotification();
+    
+    // 新增：显示管理窗口隐藏通知
+    void showManagementWindowHiddenNotification();
 
 signals:
     void showManagementRequested();
@@ -30,10 +36,6 @@ private slots:
     void onTrayActivated(QSystemTrayIcon::ActivationReason reason);
     void onShowManagement();
     void onCreateClockWidget();
-    void onCreateWeatherWidget();
-    void onCreateSystemInfoWidget();
-    void onCreateCalendarWidget();
-    void onCreateNotesWidget();
     void onCreateAIRankingWidget();
     void onExit();
     void toggleAvoidMinimizeAll();
@@ -52,10 +54,6 @@ private:
     QAction* m_showManagementAction;
     QMenu* m_createWidgetMenu;
     QAction* m_createClockAction;
-    QAction* m_createWeatherAction;
-    QAction* m_createSystemInfoAction;
-    QAction* m_createCalendarAction;
-    QAction* m_createNotesAction;
     QAction* m_createAIRankingAction;
     QAction* m_exitAction;
 }; 

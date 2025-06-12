@@ -51,7 +51,7 @@ void ThemeSettingsDialog::setupUI() {
             this, &ThemeSettingsDialog::onApplyTheme);
     connect(m_resetBtn, &QPushButton::clicked,
             this, &ThemeSettingsDialog::onResetToDefault);
-    connect(m_okBtn, &QPushButton::clicked, this, &QDialog::accept);
+    connect(m_okBtn, &QPushButton::clicked, this, &ThemeSettingsDialog::onOkClicked);
     connect(m_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
 }
 
@@ -366,6 +366,12 @@ void ThemeSettingsDialog::onResetToDefault() {
     
     updatePreview();
     m_hasChanges = true;
+}
+
+void ThemeSettingsDialog::onOkClicked() {
+    // 应用当前主题设置
+    applyCurrentTheme();
+    accept();
 }
 
 void ThemeSettingsDialog::updatePreview() {

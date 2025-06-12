@@ -30,6 +30,9 @@ public:
     explicit ManagementWindow(WidgetManager* widgetManager, QWidget* parent = nullptr);
     ~ManagementWindow();
 
+signals:
+    void windowHiddenToTray();  // 新增：当窗口隐藏到托盘时发出的信号
+
 public slots:
     void showAndRaise();
     void refreshWidgetList();

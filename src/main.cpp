@@ -33,6 +33,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QDateTime>
+#include <QSharedMemory>
 #include "Framework/WidgetManager.h"
 #include "Utils/SystemTray.h"
 #include "BackendManagement/ManagementWindow.h"
@@ -56,13 +57,20 @@
  */
 int main(int argc, char *argv[])
 {
+    // 单实例检测
+    QSharedMemory sharedMemory("uWidget_UniqueKey");
+    if (!sharedMemory.create(1)) {
+        QMessageBox::warning(nullptr, "uWidget 已在运行", "检测到已有 uWidget 实例在运行，不能重复启动。");
+        return 0;
+    }
+
     QApplication app(argc, argv);
     
     // 设置应用程序基本信息
-    app.setApplicationName("Desktop Widget System");
-    app.setApplicationVersion("1.0.0");
-    app.setOrganizationName("WidgetStudio");
-    app.setOrganizationDomain("widgetstudio.com");
+    app.setApplicationName("uWidget");
+    app.setApplicationVersion("1.1.0");
+    app.setOrganizationName("uWidget");
+    app.setOrganizationDomain("uwidget.com");
     app.setWindowIcon(QIcon(":/icons/window.png"));
     
     // 检查系统托盘支持（必需功能）
@@ -126,10 +134,6 @@ int main(int argc, char *argv[])
                                  config.name = "日历";
                                  config.size = QSize(250, 200);  // 日历标准尺寸
                                  break;
-                             case WidgetType::Notes:
-                                 config.name = "便签";
-                                 config.size = QSize(400, 300);  // 便签需要足够的书写空间
-                                 break;
                              case WidgetType::SimpleNotes:
                                  config.name = "极简便签";
                                  config.size = QSize(250, 200);  // 极简版较小
@@ -168,6 +172,11 @@ int main(int argc, char *argv[])
     QObject::connect(&widgetManager, &WidgetManager::widgetRemoved,
                      &managementWindow, &ManagementWindow::refreshWidgetList);
     
+    // 5. 管理窗口 -> 系统托盘：窗口隐藏通知
+    // 当管理窗口被隐藏到托盘时，显示通知
+    QObject::connect(&managementWindow, &ManagementWindow::windowHiddenToTray,
+                     &systemTray, &SystemTray::showManagementWindowHiddenNotification);
+    
     // 加载用户配置文件
     // 恢复上次关闭时的Widget状态
     if (!widgetManager.loadConfiguration()) {
@@ -177,7 +186,7 @@ int main(int argc, char *argv[])
     
     // 显示系统托盘图标并发送启动通知
     systemTray.show();
-    systemTray.showMessage("桌面小组件系统", "应用程序已启动，右键托盘图标查看选项。");
+    systemTray.showStartupNotification();
     
     Logger::info("应用程序初始化完成");
     

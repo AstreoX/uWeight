@@ -8,7 +8,9 @@ CreateWidgetDialog::CreateWidgetDialog(QWidget* parent)
     : QDialog(parent) {
     setWindowTitle("创建新的小组件");
     setModal(true);
-    setFixedSize(400, 600);
+    setMinimumSize(400, 600);
+    setMaximumSize(500, 800);  // 设置最大尺寸以避免窗口过大
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     
     setupUI();
     
@@ -25,6 +27,16 @@ CreateWidgetDialog::CreateWidgetDialog(QWidget* parent)
     
     // 初始化界面
     onWidgetTypeChanged();
+    
+    // 调整窗口大小以适应内容
+    adjustSize();
+    
+    // 设置窗口居中显示
+    if (parent) {
+        QRect parentGeometry = parent->geometry();
+        QPoint center = parentGeometry.center();
+        move(center.x() - width() / 2, center.y() - height() / 2);
+    }
 }
 
 void CreateWidgetDialog::setupUI() {
@@ -40,7 +52,6 @@ void CreateWidgetDialog::setupUI() {
     m_typeComboBox->addItem("天气", static_cast<int>(WidgetType::Weather));
     m_typeComboBox->addItem("系统信息", static_cast<int>(WidgetType::SystemInfo));
     m_typeComboBox->addItem("日历", static_cast<int>(WidgetType::Calendar));
-    m_typeComboBox->addItem("便签", static_cast<int>(WidgetType::Notes));
     m_typeComboBox->addItem("极简便签", static_cast<int>(WidgetType::SimpleNotes));
     m_typeComboBox->addItem("AI排行榜", static_cast<int>(WidgetType::AIRanking));
     m_typeComboBox->addItem("系统性能监测", static_cast<int>(WidgetType::SystemPerformance));
@@ -110,6 +121,10 @@ void CreateWidgetDialog::setupUI() {
     // 预览
     m_previewLabel = new QLabel("预览信息将在这里显示");
     m_previewLabel->setWordWrap(true);
+    m_previewLabel->setMinimumHeight(120);  // 设置最小高度
+    m_previewLabel->setMaximumHeight(180);  // 设置最大高度，避免过度扩展
+    m_previewLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);  // 固定垂直大小
+    m_previewLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);  // 内容顶部对齐
     m_previewLabel->setStyleSheet(
         "QLabel { "
         "background-color: #2b2b2b; "
@@ -141,6 +156,17 @@ void CreateWidgetDialog::setupUI() {
     mainLayout->addWidget(displayGroup);
     mainLayout->addWidget(m_previewLabel);
     mainLayout->addLayout(buttonLayout);
+    
+    // 设置各组件的拉伸因子，避免高度跳动
+    mainLayout->setStretchFactor(basicGroup, 0);
+    mainLayout->setStretchFactor(positionGroup, 0);
+    mainLayout->setStretchFactor(sizeGroup, 0);
+    mainLayout->setStretchFactor(displayGroup, 0);
+    mainLayout->setStretchFactor(m_previewLabel, 1);  // 给预览区域更多空间，但受限于最大高度
+    
+    // 设置布局的边距和间距，使界面更稳定
+    mainLayout->setContentsMargins(15, 15, 15, 15);
+    mainLayout->setSpacing(12);
 }
 
 void CreateWidgetDialog::onWidgetTypeChanged() {
@@ -171,12 +197,6 @@ void CreateWidgetDialog::onWidgetTypeChanged() {
             m_widthSpinBox->setValue(250);
             m_heightSpinBox->setValue(200);
             m_updateIntervalSpinBox->setValue(60000); // 1分钟
-            break;
-        case WidgetType::Notes:
-            m_nameLineEdit->setText("便签");
-            m_widthSpinBox->setValue(400);
-            m_heightSpinBox->setValue(300);
-            m_updateIntervalSpinBox->setValue(0); // 不需要自动更新
             break;
         case WidgetType::SimpleNotes:
             m_nameLineEdit->setText("极简便签");
@@ -255,7 +275,20 @@ void CreateWidgetDialog::updatePreview() {
      .arg(m_clickThroughCheckBox->isChecked() ? "是" : "否")
      .arg(m_autoStartCheckBox->isChecked() ? "是" : "否");
     
+    // 暂时阻止布局更新，避免窗口跳动
+    setUpdatesEnabled(false);
     m_previewLabel->setText(preview);
+    
+    // 确保预览标签保持固定高度
+    if (m_previewLabel->heightForWidth(m_previewLabel->width()) > m_previewLabel->maximumHeight()) {
+        // 如果文本太长，截断或提供滚动条提示
+        QFontMetrics fm(m_previewLabel->font());
+        QString elidedText = fm.elidedText(preview, Qt::ElideRight, 
+                                          m_previewLabel->width() * 8); // 大约8行的文本
+        m_previewLabel->setText(elidedText);
+    }
+    
+    setUpdatesEnabled(true);
 }
 
 WidgetConfig CreateWidgetDialog::getWidgetConfig() const {

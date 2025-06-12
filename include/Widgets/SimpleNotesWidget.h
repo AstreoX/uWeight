@@ -21,6 +21,7 @@ public:
 
 protected:
     void drawContent(QPainter& painter) override;
+    void paintEvent(QPaintEvent* event) override;
     void applyConfig() override;
     void resizeEvent(QResizeEvent* event) override;
     void contextMenuEvent(QContextMenuEvent* event) override;

@@ -1,0 +1,292 @@
+classDiagram
+    %% Qt基类
+    class QWidget {
+        <<Qt>>
+        +show()
+        +hide()
+        +resize()
+    }
+    
+    class QObject {
+        <<Qt>>
+        +connect()
+        +disconnect()
+        +emit()
+    }
+    
+    class QMainWindow {
+        <<Qt>>
+        +setCentralWidget()
+        +setMenuBar()
+    }
+    
+    class QDialog {
+        <<Qt>>
+        +exec()
+        +accept()
+        +reject()
+    }
+    
+    class QSystemTrayIcon {
+        <<Qt>>
+        +show()
+        +setIcon()
+    }
+    
+    %% 核心框架层
+    class WidgetFramework {
+        <<singleton>>
+        -instance: WidgetFramework*
+        +getInstance(): WidgetFramework*
+        +initialize()
+        +shutdown()
+    }
+    
+    class WidgetManager {
+        -widgets: QMap<QString, BaseWidget*>
+        -configPath: QString
+        +createWidget(config: WidgetConfig): bool
+        +removeWidget(id: QString): bool
+        +startWidget(id: QString): bool
+        +stopWidget(id: QString): bool
+        +loadConfiguration(): bool
+        +saveConfiguration(): bool
+        +getWidget(id: QString): BaseWidget*
+    }
+    
+    %% 核心组件层
+    class BaseWidget {
+        <<abstract>>
+        #config: WidgetConfig
+        #isDragging: bool
+        +BaseWidget(config: WidgetConfig)
+        +updateData()* 
+        +saveConfiguration()*
+        +loadConfiguration()*
+        +getId(): QString
+        +getType(): WidgetType
+        #mousePressEvent(event: QMouseEvent*)
+        #mouseMoveEvent(event: QMouseEvent*)
+        #paintEvent(event: QPaintEvent*)
+    }
+    
+    class WidgetRenderer {
+        -renderEngine: QOpenGLWidget
+        +render(widget: BaseWidget)
+        +setTheme(theme: Theme)
+        +updateBuffer()
+    }
+    
+    class InteractionSystem {
+        -dragManager: DragManager
+        -resizeManager: ResizeManager
+        +handleMouseEvent(event: QMouseEvent*)
+        +handleKeyEvent(event: QKeyEvent*)
+        +enableDrag(widget: BaseWidget)
+        +enableResize(widget: BaseWidget)
+    }
+    
+    %% 后端管理层
+    class ManagementWindow {
+        -widgetList: QListWidget
+        -previewArea: QWidget
+        +addWidget()
+        +removeWidget()
+        +configureWidget()
+        +refreshList()
+    }
+    
+    class ConfigWindow {
+        -settingsForm: QFormLayout
+        -currentWidget: BaseWidget*
+        +loadWidgetConfig(widget: BaseWidget)
+        +saveWidgetConfig()
+        +resetToDefaults()
+    }
+    
+    class CreateWidgetDialog {
+        -widgetTypeCombo: QComboBox
+        -nameEdit: QLineEdit
+        -positionSpinBoxes: QSpinBox
+        +getSelectedType(): WidgetType
+        +getWidgetName(): QString
+        +getPosition(): QPoint
+    }
+    
+    class ThemeSettingsDialog {
+        -themeList: QListWidget
+        -previewArea: QWidget
+        -colorPicker: QColorDialog
+        +loadThemes()
+        +applyTheme(theme: QString)
+        +createCustomTheme()
+    }
+    
+    %% 工具类层
+    class SystemTray {
+        -trayIcon: QSystemTrayIcon
+        -contextMenu: QMenu
+        +initialize()
+        +showMessage(message: QString)
+        +addAction(action: QAction)
+    }
+    
+    class Logger {
+        <<singleton>>
+        -logFile: QFile
+        -logLevel: LogLevel
+        +initialize()
+        +debug(message: QString)
+        +info(message: QString)
+        +warning(message: QString)
+        +error(message: QString)
+        +critical(message: QString)
+    }
+    
+    class ThemeManager {
+        -currentTheme: QString
+        -themes: QMap<QString, Theme>
+        -resourceManager: ThemeResourceManager*
+        +loadTheme(name: QString): bool
+        +getCurrentTheme(): QString
+        +getAvailableThemes(): QStringList
+        +applyTheme(widget: BaseWidget)
+    }
+    
+    class ThemeResourceManager {
+        -styleSheets: QMap<QString, QString>
+        -icons: QMap<QString, QIcon>
+        -colors: QMap<QString, QColor>
+        +loadStyleSheet(theme: QString): QString
+        +getIcon(name: QString): QIcon
+        +getColor(name: QString): QColor
+    }
+    
+    %% 小部件类型层
+    class ClockWidget {
+        -timer: QTimer
+        -timeFormat: QString
+        -showDate: bool
+        +updateTime()
+        +setTimeFormat(format: QString)
+        +setDateVisible(visible: bool)
+    }
+    
+    class WeatherWidget {
+        -networkManager: QNetworkAccessManager
+        -apiKey: QString
+        -location: QString
+        -weatherData: WeatherData
+        +updateWeather()
+        +setLocation(location: QString)
+        +setApiKey(key: QString)
+    }
+    
+    class AIRankingWidget {
+        -networkManager: QNetworkAccessManager
+        -rankingData: QList<RankingItem>
+        -updateInterval: int
+        +updateRanking()
+        +setUpdateInterval(interval: int)
+    }
+    
+    class SystemPerformanceWidget {
+        -cpuMonitor: CPUMonitor
+        -memoryMonitor: MemoryMonitor
+        -performanceData: PerformanceData
+        +updatePerformance()
+        +getCPUUsage(): double
+        +getMemoryUsage(): double
+    }
+    
+    class NotesWidget {
+        -textEdit: QTextEdit
+        -saveTimer: QTimer
+        -noteContent: QString
+        +addNote(content: QString)
+        +saveNotes()
+        +loadNotes()
+    }
+    
+    class SimpleNotesWidget {
+        -noteLabel: QLabel
+        -editMode: bool
+        -noteText: QString
+        +toggleEditMode()
+        +updateText(text: QString)
+    }
+    
+    class CalendarWidget {
+        -calendar: QCalendarWidget
+        -events: QMap<QDate, QStringList>
+        -selectedDate: QDate
+        +addEvent(date: QDate, event: QString)
+        +removeEvent(date: QDate, event: QString)
+        +getEvents(date: QDate): QStringList
+    }
+    
+    %% 数据结构
+    class WidgetConfig {
+        +id: QString
+        +type: WidgetType
+        +name: QString
+        +position: QPoint
+        +size: QSize
+        +customConfig: QVariantMap
+        +isVisible: bool
+        +isEnabled: bool
+    }
+    
+    class WidgetType {
+        <<enumeration>>
+        Clock
+        Weather
+        SystemInfo
+        Calendar
+        Notes
+        SimpleNotes
+        AIRanking
+    }
+    
+    %% 继承关系
+    QWidget <|-- BaseWidget
+    QObject <|-- WidgetManager
+    QMainWindow <|-- ManagementWindow
+    QDialog <|-- ConfigWindow
+    QDialog <|-- CreateWidgetDialog
+    QDialog <|-- ThemeSettingsDialog
+    QObject <|-- SystemTray
+    QObject <|-- Logger
+    QObject <|-- ThemeManager
+    QObject <|-- ThemeResourceManager
+    
+    BaseWidget <|-- ClockWidget
+    BaseWidget <|-- WeatherWidget
+    BaseWidget <|-- AIRankingWidget
+    BaseWidget <|-- SystemPerformanceWidget
+    BaseWidget <|-- NotesWidget
+    BaseWidget <|-- SimpleNotesWidget
+    BaseWidget <|-- CalendarWidget
+    
+    %% 组合和聚合关系
+    WidgetFramework *-- WidgetManager : manages
+    WidgetManager *-- BaseWidget : contains
+    BaseWidget *-- WidgetConfig : has
+    BaseWidget ..> WidgetType : uses
+    
+    ManagementWindow ..> WidgetManager : uses
+    ManagementWindow ..> CreateWidgetDialog : creates
+    ConfigWindow ..> BaseWidget : configures
+    
+    ThemeManager *-- ThemeResourceManager : uses
+    SystemTray ..> QSystemTrayIcon : wraps
+    
+    WidgetRenderer ..> BaseWidget : renders
+    InteractionSystem ..> BaseWidget : handles
+    
+    %% 依赖关系
+    BaseWidget ..> Logger : logs to
+    BaseWidget ..> ThemeManager : applies theme from
+    WidgetManager ..> Logger : logs to
+    WeatherWidget ..> QNetworkAccessManager : uses
+    AIRankingWidget ..> QNetworkAccessManager : uses

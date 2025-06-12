@@ -25,7 +25,6 @@ enum class WidgetType {
     Weather,    // 天气小组件
     SystemInfo,
     Calendar,
-    Notes,
     SimpleNotes, // 极简便签小组件
     AIRanking,  // AI能力排行榜小组件
     SystemPerformance,  // 系统性能监测小组件
