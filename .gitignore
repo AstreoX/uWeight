@@ -98,6 +98,33 @@ x86/
 # Project specific
 *.bak
 
+# Build and deployment scripts
+*.bat
+*.ps1
+create_*.bat
+deploy_*.bat
+generate_*.bat
+
+# UML and documentation files
+*.puml
+*.pdf
+*.png
+*.svg
+*.jar
+UML*
+*UML*
+*类图*
+*脚本*
+*工具*
+
+# Installer files
+*.nsi
+installer*
+
+# Deploy directory (keep structure but ignore content)
+deploy/
+!deploy/.gitkeep
+
 # C++ objects and libs
 *.slo
 *.lo
