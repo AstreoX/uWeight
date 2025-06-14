@@ -35,4 +35,4 @@ uWidget 是一个优雅的桌面小组件应用程序，提供多样化的桌面
 
 ## 开发团队
 
-uTools Studio 团队 [AstreoX, Aveline, YumeshioAmami, PAPA-SUN]
+uTools Studio 团队 [AstreoX, Aveline, YumeshioAmami, PAPAPIG-SUN]
